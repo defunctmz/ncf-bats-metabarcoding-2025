@@ -25,9 +25,8 @@ extract_species <- function(df) {
       }
     ) %>%
     ungroup() %>%
-    select(species)ww
-}w
-wwwwww
+    select(species)
+}
 # Get all sheet names
 sheet_names <- excel_sheets(file_path)
 
@@ -52,4 +51,4 @@ print(species_summary)
 View(species_summary)
 
 # Optionally, save to CSV
-write.csv(species_summary, "species_occurrence_summary.csv", row.names = FALSE)
+write.csv(species_summary, "sp_occ_summary.csv", row.names = FALSE)
