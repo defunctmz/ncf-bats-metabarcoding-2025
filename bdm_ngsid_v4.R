@@ -148,7 +148,7 @@ ngsid_join %>% filter(phylum == "Arthropoda") %>% pull(p_ident) %>% IQR(na.rm = 
 
 # Clean up non essential cols from df and count total supporting reads for each taxid
 ngsid_v3 <- ngsid_join %>%
-  filter(phylum == "Arthropoda", p_ident >= 80) %>% # tighten filter on taxon matches here
+  filter(phylum == "Arthropoda", p_ident >= 80) %>% # tighten filter on taxon matches here ====
   group_by(taxid) %>%
   mutate(taxid_total_reads = sum(sup_reads)) %>%
   select(-(phylum:genus)) %>%
@@ -182,6 +182,13 @@ ngsid_v5 <- ngsid_v4 %>%
   mutate(sp_foo = n()) %>%
   ungroup()
 
+# total number of species detected
+diet_spp <- ngsid_v5 %>%
+  select(species,sp_foo,taxid_total_reads) %>%
+  unique() %>%
+  arrange(desc(sp_foo),desc(taxid_total_reads))
+
+
 # Simpler table with freq of occurrence for each arthropod diet species, sample_ids removed
 sp_foo_no_sid <- ngsid_v5 %>%
   select(species,sp_foo, taxid_total_reads) %>%
@@ -201,7 +208,6 @@ sp_foo_pest_class <- sp_foo_no_sid %>%
                              species == "Odontotermes obesus" ~ "P",
                              species == "Nilaparvata lugens" ~ "P",
                              .default = "NP"))
-
 
 # Plot prepping ====
 
@@ -238,7 +244,6 @@ plot_theme <- theme_classic(base_family = "Bahnschrift") +
         legend.title = element_text(size = 16, color = "black"),
         legend.text = element_text(size = 14, color = "black"))
 
-
 # Plotting ----
 
 ggplot(sp_foo_pest_class,
@@ -250,10 +255,10 @@ ggplot(sp_foo_pest_class,
              size = point_size,
              show.legend = T) +
   scale_color_manual(name = "Species Type",
-                     labels = c("Not Pest","Pest"),
+                     labels = c("Non-Pest","Pest"),
                      values = c("lightgreen","red3")) +
   scale_shape_manual(name = "Species Type",
-                     labels = c("Not Pest","Pest"),
+                     labels = c("Non-Pest","Pest"),
                      values = c(16,17)) +
   geom_text(aes(label = sp_foo),
             nudge_x = 3.5,
@@ -265,7 +270,96 @@ ggplot(sp_foo_pest_class,
 
 # Export plot out as a png file to use. This will take last created plot in the running session
 # Saved in the source project directory
-ggsave(filename = "diet_foo_plot.png",plot = last_plot(),
+ggsave(filename = "diet_foo_plot_ngsid.png",plot = last_plot(),
        dpi = 300, units = "px", width = 1600, height = 1080)
 
 
+# import key file connecting sample ids to field ids
+f_id_key <- read_csv("raw_data/bdm_field-id_sample-id_key.csv")
+
+# Connect sample ids to field ids
+ngsid_v6 <- full_join(ngsid_v5, f_id_key, by = join_by("sample_id"))
+
+# extract season and site id from field ids
+ngsid_v7 <- ngsid_v6 %>%
+  separate_wider_position(f_id, c(season = 1, site = 1), too_many = "drop", cols_remove = F) %>%
+  arrange(species, season)
+
+# Calculate per species foo count per season
+ngsid_v8 <- ngsid_v7 %>%
+  select(-taxid,-taxid_total_reads) %>%
+  group_by(species,season) %>%
+  mutate(sp_season_foo = n()) %>%
+  ungroup()
+
+# Calculate per species foo per site
+ngsid_v9 <- ngsid_v8 %>%
+  group_by(species, site) %>%
+  mutate(sp_site_foo = n()) %>%
+  ungroup()
+
+# clean up cols for plotting
+
+ngsid_season_foo <- ngsid_v9 %>%
+  select(-sample_id,-f_id, -site, -sp_site_foo) %>%
+  unique() %>%
+  remove_missing()
+
+# create top 10 spp list
+top_10_spp <- ngsid_season_foo %>%
+  distinct(species, sp_foo) %>%
+  slice_max(order_by = sp_foo, n = 10) %>%
+  pull(species)
+
+# filter out top 10 spp data, apply pest non pest class, apply season names, reorganise season order
+ngsid_season_foo_top10 <- ngsid_season_foo %>%
+  filter(species %in% top_10_spp) %>%
+  arrange(desc(sp_foo), species, season) %>%
+  mutate(sp_type = case_when(species == "Eysarcoris ventralis" ~ "P",
+                             species == "Pyrilla perpusilla" ~ "P",
+                             species == "Elasmolomus pallens" ~ "P",
+                             species == "Bagrada hilaris" ~ "P",
+                             species == "Odontotermes obesus" ~ "P",
+                             species == "Nilaparvata lugens" ~ "P",
+                             .default = "NP")) %>%
+  mutate(season = case_when(season == 1 ~ "Post-Monsoon",
+                            season == 2 ~ "Winter",
+                            season == 3 ~ "Summer",
+                            season == 4 ~ "Monsoon"))
+
+# Plot prep
+library(showtext)
+library(ggpattern)
+showtext_auto()
+font_add(family = "Bahnschrift", regular = "Bahnschrift.ttf")
+
+# Plots
+ggplot(ngsid_season_foo_top10,
+       aes(x = sp_season_foo, y = reorder(species,sp_foo),
+           fill = sp_type,
+           color = sp_type,
+           linetype = sp_type)) +
+  geom_segment(aes(xend = 0, yend = species),
+               linewidth = 0.8) +
+  geom_label(aes(label = sp_season_foo),
+             fill = "white",
+             size = 5,
+             show.legend = F) +
+  scale_fill_manual(name = "Species Type",
+                    labels = c("Non-Pest","Pest"),
+                    values = c("darkgreen","red3")) +
+  scale_color_manual(name = "Species Type",
+                    labels = c("Non-Pest","Pest"),
+                    values = c("darkgreen","red3")) +
+  scale_shape_manual(name = "Species Type",
+                    labels = c("Non-Pest","Pest"),
+                    values = c(16, 17)) +
+  scale_linetype_manual(name = "Species Type",
+                        labels = c("Non-Pest","Pest"),
+                        values = c("dashed", "solid"))+
+  facet_wrap(~season, ncol = 4) +
+  labs(x = "Freq of occurrence (FOO)",
+       y = "Diet Species (Top 10 by FOO)") +
+  plot_theme +
+  theme(strip.text = element_text(size = 14, color = "black"),
+        legend.key.width = unit(0.8, "cm"))
