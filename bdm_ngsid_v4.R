@@ -148,7 +148,7 @@ ngsid_join %>% filter(phylum == "Arthropoda") %>% pull(p_ident) %>% IQR(na.rm = 
 
 # Clean up non essential cols from df and count total supporting reads for each taxid
 ngsid_v3 <- ngsid_join %>%
-  filter(phylum == "Arthropoda", p_ident >= 80) %>% # tighten filter on taxon matches here ====
+  filter(phylum == "Arthropoda", p_ident >= 95) %>% # tighten filter on taxon matches here ====
   group_by(taxid) %>%
   mutate(taxid_total_reads = sum(sup_reads)) %>%
   select(-(phylum:genus)) %>%
@@ -169,7 +169,7 @@ ngsid_v4 <- ngsid_v3 %>%
 
 # check if there are duplicate tax ids within each sample id
 duplicates <- ngsid_v4 %>%
-  group_by(sample_id, tax_id) %>%
+  group_by(sample_id, taxid) %>%
   filter(n() > 1) %>%
   ungroup()
 
@@ -209,6 +209,16 @@ sp_foo_pest_class <- sp_foo_no_sid %>%
                              species == "Nilaparvata lugens" ~ "P",
                              .default = "NP"))
 
+# add pest affected crop info
+sp_foo_pest_class <- sp_foo_pest_class %>%
+  mutate(crop = case_when(species == "Eysarcoris ventralis" ~ "Rice, Barley",
+                          species == "Pyrilla perpusilla" ~ "Sugarcane, Wheat, Sorghum, Pearl millet etc.",
+                          species == "Elasmolomus pallens" ~ "Peanuts, Indian ginseng (Ashwagandha)",
+                          species == "Bagrada hilaris" ~ "Cruciferous vegetables (e.g. Mustard, Cabbage)",
+                          species == "Odontotermes obesus" ~ "Finger millet (Ragi), Maize, Wheat etc.",
+                          species == "Nilaparvata lugens" ~ "Rice",
+                          .default = ""))
+
 # Plot prepping ====
 
 # font setup
@@ -231,46 +241,52 @@ labeltext_family = "Bahnschrift"
 # check total number of samples
 length(unique(ngsid_v5$sample_id))
 
-x_lab = "Frequency of occurrence (FOO) [n = 125]"
+x_lab = paste0("Frequency of occurrence (FOO) [n = ",length(unique(ngsid_v5$sample_id)),"]")
 y_lab = "Species (Top 10 by FOO)"
 
-# plot element adjustments
+# plot element adjustments ====
 plot_theme <- theme_classic(base_family = "Bahnschrift") +
-  theme(axis.title = element_text(size = 16, color = "black"),
-        axis.text = element_text(size = 14, color = "black"),
+  theme(axis.title = element_text(size = 20, color = "black"),
+        axis.text = element_text(size = 18, color = "black"),
         axis.title.x = element_text(margin = margin(t = 10)),
         axis.title.y = element_text(margin = margin(r = 10)),
         axis.text.y = element_text(margin = margin(r = 5), ),
-        legend.title = element_text(size = 16, color = "black"),
-        legend.text = element_text(size = 14, color = "black"))
+        legend.title = element_text(size = 20, color = "black"),
+        legend.text = element_text(size = 18, color = "black"))
 
 # Plotting ----
 
 ggplot(sp_foo_pest_class,
-       aes(x = sp_foo, y = reorder(species,sp_foo))) +
-  geom_segment(aes(xend = 0, yend = species),
-               color = linecolor,
-               linetype = linetype) +
-  geom_point(aes(shape = sp_type, color = sp_type),
-             size = point_size,
-             show.legend = T) +
+       aes(x = sp_foo, y = reorder(species,sp_foo),
+       fill = sp_type, color = sp_type, linetype = sp_type)) +
+  geom_segment(aes(xend = 0, yend = species), linewidth = 0.6) +
+  geom_label(aes(label = sp_foo),
+             fill = "white",
+             size = 6,
+             show.legend = F) +
+  geom_text(aes(x = 0,
+                label = crop),
+            hjust = 0,
+            vjust = -0.8,
+            size = 5,
+            color = "black",
+            show.legend = F) +
   scale_color_manual(name = "Species Type",
                      labels = c("Non-Pest","Pest"),
-                     values = c("lightgreen","red3")) +
+                     values = c("darkgreen","red3")) +
   scale_shape_manual(name = "Species Type",
                      labels = c("Non-Pest","Pest"),
                      values = c(16,17)) +
-  geom_text(aes(label = sp_foo),
-            nudge_x = 3.5,
-            size = labeltext_size,
-            family = labeltext_family) +
+  scale_linetype_manual(name = "Species Type",
+                        labels = c("Non-Pest","Pest"),
+                        values = c("dashed", "solid")) +
   expand_limits(x = max(sp_foo_pest_class$sp_foo) * 1.2) +
   labs(x = x_lab, y = y_lab) +
   plot_theme
 
 # Export plot out as a png file to use. This will take last created plot in the running session
 # Saved in the source project directory
-ggsave(filename = "diet_foo_plot_ngsid.png",plot = last_plot(),
+ggsave(filename = "pests-top10-foo-crops-v1.png",plot = last_plot(),
        dpi = 300, units = "px", width = 1600, height = 1080)
 
 
@@ -322,10 +338,10 @@ ngsid_season_foo_top10 <- ngsid_season_foo %>%
                              species == "Odontotermes obesus" ~ "P",
                              species == "Nilaparvata lugens" ~ "P",
                              .default = "NP")) %>%
-  mutate(season = case_when(season == 1 ~ "Post-Monsoon",
-                            season == 2 ~ "Winter",
-                            season == 3 ~ "Summer",
-                            season == 4 ~ "Monsoon"))
+  mutate(season = case_when(season == 1 ~ "Post-Monsoon (Oct-Dec)",
+                            season == 2 ~ "Winter (Jan-Mar)",
+                            season == 3 ~ "Summer (Apr-Jun)",
+                            season == 4 ~ "Monsoon (Jul-Sep)"))
 
 # Plot prep
 library(showtext)
@@ -343,7 +359,7 @@ ggplot(ngsid_season_foo_top10,
                linewidth = 0.8) +
   geom_label(aes(label = sp_season_foo),
              fill = "white",
-             size = 5,
+             size = 6,
              show.legend = F) +
   scale_fill_manual(name = "Species Type",
                     labels = c("Non-Pest","Pest"),
@@ -356,10 +372,15 @@ ggplot(ngsid_season_foo_top10,
                     values = c(16, 17)) +
   scale_linetype_manual(name = "Species Type",
                         labels = c("Non-Pest","Pest"),
-                        values = c("dashed", "solid"))+
+                        values = c("dashed", "solid")) +
   facet_wrap(~season, ncol = 4) +
-  labs(x = "Freq of occurrence (FOO)",
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1)),
+                     breaks = c(0,10,20)) +
+  labs(x = "Frequency of occurrence (FOO)",
        y = "Diet Species (Top 10 by FOO)") +
   plot_theme +
-  theme(strip.text = element_text(size = 14, color = "black"),
-        legend.key.width = unit(0.8, "cm"))
+  theme(strip.text = element_text(size = 16, color = "black"),
+        legend.key.width = unit(0.8, "cm"),
+        panel.border = element_rect(linetype = "dashed",
+                                    color = "darkgray", fill = NA, size = 0.4),
+        panel.spacing = unit(0, "lines"))
